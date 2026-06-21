@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Home</title>
+    <title>Profile</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,16 +13,18 @@
 </div>
 <div class="login-box">
 
-    <h1>Welcome</h1>
+    <h2>User Profile</h2>
 
-    <a href="/login">
-        <button>Login</button>
-    </a>
+    <p>
+        Username: {{ username }}
+    </p>
 
-    <br><br>
+    <p>
+        Email: {{ email }}
+    </p>
 
-    <a href="/signup">
-        <button>Sign Up</button>
+    <a href="/dashboard">
+        <button>Dashboard</button>
     </a>
 
 </div>

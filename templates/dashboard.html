@@ -5,16 +5,47 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-
+<div class="navbar">
+    <a href="/">Home</a>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/profile">Profile</a>
+    <a href="/logout">Logout</a>
+</div>
 <div class="login-box">
 
-<h1>Dashboard</h1>
+    <h1>Dashboard</h1>
 
-<p>Welcome to your application.</p>
+    <h3>
+        Welcome {{ username }}
+    </h3>
 
-<a href="/">
-    <button>Home</button>
-</a>
+    <p>
+        Email: {{ email }}
+    </p>
+    <p>Role: {{ role }}</p>
+
+    {% if role == 'admin' %}
+
+    <br>
+
+    <a href="/admin">
+        <button>Admin Panel</button>
+    </a>
+
+    {% endif %}
+
+    <br>
+
+    <a href="/profile">
+        <button>Profile</button>
+    </a>
+
+    <br><br>
+
+    <a href="/logout">
+        <button>Logout</button>
+    </a>
+
 
 </div>
 
