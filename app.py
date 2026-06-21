@@ -1,11 +1,17 @@
 from flask import Flask, render_template, request, jsonify, redirect, session
 import pymysql
 import bcrypt
+from itsdangerous import URLSafeTimedSerializer
+
 
 app = Flask(__name__)
 
 # Secret key for sessions
 app.secret_key = "BhushanSuperSecretKey123"
+
+serializer = URLSafeTimedSerializer(
+    app.secret_key
+)
 
 # Database Configuration
 DB_CONFIG = {
@@ -28,8 +34,116 @@ def get_db():
 def home():
     return render_template("home.html")
 
+# Forgot Password
 
- 
+@app.route(
+    "/forgot-password",
+    methods=["GET","POST"]
+)
+def forgot_password():
+
+    if request.method == "GET":
+        return render_template(
+            "forgot_password.html"
+        )
+
+    email = request.form.get("email")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE email=%s
+        """,
+        (email,)
+    )
+
+    user = cursor.fetchone()
+
+    if not user:
+        return "Email not found"
+
+    token = serializer.dumps(
+        email,
+        salt="password-reset"
+    )
+
+    print(
+        f"Reset Link: "
+        f"http://localhost:5000/reset-password/{token}"
+    )
+
+    log_action(
+        user["username"],
+        "Password Reset Requested"
+    )
+
+    return """
+    Password reset link generated.
+    Check terminal output.
+    """
+
+# reset password
+
+@app.route(
+    "/reset-password/<token>",
+    methods=["GET","POST"]
+)
+def reset_password(token):
+
+    try:
+
+        email = serializer.loads(
+            token,
+            salt="password-reset",
+            max_age=3600
+        )
+
+    except Exception:
+
+        return "Invalid or Expired Link"
+
+    if request.method == "GET":
+
+        return render_template(
+            "reset_password.html",
+            token=token
+        )
+
+    password = request.form.get(
+        "password"
+    )
+
+    hashed_password = bcrypt.hashpw(
+        password.encode(),
+        bcrypt.gensalt()
+    ).decode()
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET password=%s
+        WHERE email=%s
+        """,
+        (
+            hashed_password,
+            email
+        )
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return redirect("/login")
+
 # Login Page
  
 @app.route("/login")
@@ -537,9 +651,6 @@ def login():
 
         user = cursor.fetchone()
 
-        cursor.close()
-        conn.close()
-
         if not user:
 
             return jsonify({
@@ -561,6 +672,32 @@ def login():
                 user["username"],
                 "User Login"
             )
+
+            ip_address = request.remote_addr
+
+            cursor.execute(
+                """
+                INSERT INTO login_history
+                (
+                    username,
+                    ip_address
+                )
+                VALUES
+                (
+                    %s,
+                    %s
+                )
+                """,
+                (
+                    user["username"],
+                    ip_address
+                )
+            )
+
+            conn.commit()
+
+            cursor.close()
+            conn.close()
 
             return jsonify({
                 "status": "success",
@@ -665,7 +802,34 @@ def log_action(username, action):
     cursor.close()
     conn.close()
 
- 
+
+# Login History
+
+@app.route("/login-history")
+def login_history():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM login_history
+        ORDER BY login_time DESC
+    """)
+
+    logs = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "login_history.html",
+        logs=logs
+    )
+
 # Run App
  
 if __name__ == "__main__":
