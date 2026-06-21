@@ -21,50 +21,93 @@ def get_db():
     return pymysql.connect(**DB_CONFIG)
 
 
-# ----------------------------
+ 
 # Home Page
-# ----------------------------
+ 
 @app.route("/")
 def home():
     return render_template("home.html")
 
 
-# ----------------------------
+ 
 # Login Page
-# ----------------------------
+ 
 @app.route("/login")
 def login_page():
     return render_template("login.html")
 
 
-# ----------------------------
+ 
 # Signup Page
-# ----------------------------
+ 
 @app.route("/signup")
 def signup_page():
     return render_template("signup.html")
 
 
-# ----------------------------
+ 
 # Dashboard
-# ----------------------------
+ 
 @app.route("/dashboard")
 def dashboard():
 
+    # Check if user is logged in
     if "user_id" not in session:
         return redirect("/login")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Total Users
+    cursor.execute(
+        "SELECT COUNT(*) AS total FROM users"
+    )
+    total_users = cursor.fetchone()["total"]
+
+    # Total Admin Users
+    cursor.execute(
+        "SELECT COUNT(*) AS total FROM users WHERE role='admin'"
+    )
+    admin_users = cursor.fetchone()["total"]
+
+    # Total Regular Users
+    cursor.execute(
+        "SELECT COUNT(*) AS total FROM users WHERE role='user'"
+    )
+    regular_users = cursor.fetchone()["total"]
+
+    # Recent 5 Users
+    cursor.execute("""
+        SELECT
+            username,
+            email,
+            role,
+            created_at
+        FROM users
+        ORDER BY created_at DESC
+        LIMIT 5
+    """)
+
+    recent_users = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
 
     return render_template(
         "dashboard.html",
         username=session["username"],
         email=session["email"],
-        role=session["role"]
+        role=session["role"],
+        total_users=total_users,
+        admin_users=admin_users,
+        regular_users=regular_users,
+        recent_users=recent_users
     )
 
 
-# ----------------------------
+ 
 # Admin
-# ----------------------------
+ 
 @app.route("/admin")
 def admin():
 
@@ -78,11 +121,12 @@ def admin():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id,
-               username,
-               email,
-               role,
-               created_at
+        SELECT
+            id,
+            username,
+            email,
+            role,
+            created_at
         FROM users
         ORDER BY id
     """)
@@ -98,17 +142,30 @@ def admin():
     )
 
 
-# ----------------------------
+ 
 # Delete User
-# ----------------------------
+ 
 @app.route("/delete-user/<int:user_id>")
 def delete_user(user_id):
+
+    if "user_id" not in session:
+        return redirect("/login")
 
     if session["role"] != "admin":
         return redirect("/dashboard")
 
+    if user_id == session["user_id"]:
+        return redirect("/admin")
+
     conn = get_db()
     cursor = conn.cursor()
+    
+    cursor.execute(
+        "SELECT username FROM users WHERE id=%s",
+        (user_id,)
+    )
+
+    user = cursor.fetchone()
 
     cursor.execute(
         "DELETE FROM users WHERE id=%s",
@@ -120,11 +177,100 @@ def delete_user(user_id):
     cursor.close()
     conn.close()
 
+    log_action(
+        session["username"],
+        f"Deleted User {user['username']}"
+    )
+
     return redirect("/admin")
 
-# ----------------------------
+
+ 
+# Edit User
+ 
+@app.route("/edit-user/<int:user_id>")
+def edit_user(user_id):
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if session["role"] != "admin":
+        return redirect("/dashboard")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE id=%s
+        """,
+        (user_id,)
+    )
+
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "edit_user.html",
+        user=user
+    )
+
+
+
+ 
+# Update User
+ 
+@app.route("/update-user/<int:user_id>", methods=["POST"])
+def update_user(user_id):
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if session["role"] != "admin":
+        return redirect("/dashboard")
+
+    username = request.form.get("username")
+    email = request.form.get("email")
+    role = request.form.get("role")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET username=%s,
+            email=%s,
+            role=%s
+        WHERE id=%s
+        """,
+        (
+            username,
+            email,
+            role,
+            user_id
+        )
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    log_action(
+        session["username"],
+        f"Updated User ID {user_id}"
+    )
+
+    return redirect("/admin")
+
+ 
 # Profile
-# ----------------------------
+ 
 @app.route("/profile")
 def profile():
 
@@ -137,20 +283,25 @@ def profile():
         email=session["email"]
     )
 
-# ----------------------------
+ 
 # Logout
-# ----------------------------
+ 
 @app.route("/logout")
 def logout():
+
+    if "username" in session:
+
+        log_action(
+            session["username"],
+            "User Logout"
+        )
 
     session.clear()
 
     return redirect("/")
-
-
-# ----------------------------
+ 
 # Signup API
-# ----------------------------
+ 
 @app.route("/signup", methods=["POST"])
 def signup():
 
@@ -204,11 +355,16 @@ def signup():
 
         cursor.close()
         conn.close()
+        log_action(
+            username,
+            "New User Registered"
+        )
 
         return jsonify({
             "status": "success",
             "message": "User Created Successfully"
         })
+    
 
     except Exception as e:
 
@@ -218,9 +374,9 @@ def signup():
         }), 500
 
 
-# ----------------------------
+ 
 # Login API
-# ----------------------------
+ 
 @app.route("/login", methods=["POST"])
 def login():
 
@@ -263,6 +419,11 @@ def login():
             session["email"] = user["email"]
             session["role"] = user["role"]
 
+            log_action(
+                user["username"],
+                "User Login"
+            )
+
             return jsonify({
                 "status": "success",
                 "message": "Login Successful"
@@ -281,9 +442,9 @@ def login():
         }), 500
 
 
-# ----------------------------
+ 
 # Health Check
-# ----------------------------
+ 
 @app.route("/health")
 def health():
 
@@ -303,10 +464,72 @@ def health():
             "error": str(e)
         })
 
+# Audit Log
 
-# ----------------------------
+@app.route("/audit-logs")
+def audit_logs():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if session["role"] != "admin":
+        return redirect("/dashboard")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM audit_logs
+        ORDER BY created_at DESC
+        LIMIT 100
+    """)
+
+    logs = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "audit_logs.html",
+        logs=logs
+    )
+
+ 
+# Audit Logging
+
+def log_action(username, action):
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO audit_logs
+        (
+            username,
+            action
+        )
+        VALUES
+        (
+            %s,
+            %s
+        )
+        """,
+        (
+            username,
+            action
+        )
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+ 
 # Run App
-# ----------------------------
+ 
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",

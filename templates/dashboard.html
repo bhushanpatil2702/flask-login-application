@@ -1,53 +1,150 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-<div class="navbar">
-    <a href="/">Home</a>
-    <a href="/dashboard">Dashboard</a>
-    <a href="/profile">Profile</a>
-    <a href="/logout">Logout</a>
+{% extends "base.html" %}
+
+{% block title %}
+Dashboard
+{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">
+    Dashboard
+</h2>
+
+<div class="row">
+
+    <div class="col-md-4 mb-4">
+
+        <div class="card text-bg-primary card-box">
+
+            <div class="card-body">
+
+                <h5 class="card-title">
+                    Total Users
+                </h5>
+
+                <h2>
+                    {{ total_users }}
+                </h2>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="col-md-4 mb-4">
+
+        <div class="card text-bg-success card-box">
+
+            <div class="card-body">
+
+                <h5 class="card-title">
+                    Admin Users
+                </h5>
+
+                <h2>
+                    {{ admin_users }}
+                </h2>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="col-md-4 mb-4">
+
+        <div class="card text-bg-warning card-box">
+
+            <div class="card-body">
+
+                <h5 class="card-title">
+                    Regular Users
+                </h5>
+
+                <h2>
+                    {{ regular_users }}
+                </h2>
+
+            </div>
+
+        </div>
+
+    </div>
+
 </div>
-<div class="login-box">
 
-    <h1>Dashboard</h1>
+<div class="card">
 
-    <h3>
-        Welcome {{ username }}
-    </h3>
+    <div class="card-header">
 
-    <p>
-        Email: {{ email }}
-    </p>
-    <p>Role: {{ role }}</p>
+        <h5 class="mb-0">
+            Recent Users
+        </h5>
 
-    {% if role == 'admin' %}
+    </div>
 
-    <br>
+    <div class="card-body">
 
-    <a href="/admin">
-        <button>Admin Panel</button>
-    </a>
+        <table class="table table-striped">
 
-    {% endif %}
+            <thead>
 
-    <br>
+                <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Created At</th>
+                </tr>
 
-    <a href="/profile">
-        <button>Profile</button>
-    </a>
+            </thead>
 
-    <br><br>
+            <tbody>
 
-    <a href="/logout">
-        <button>Logout</button>
-    </a>
+                {% for user in recent_users %}
 
+                <tr>
+
+                    <td>
+                        {{ user.username }}
+                    </td>
+
+                    <td>
+                        {{ user.email }}
+                    </td>
+
+                    <td>
+
+                        {% if user.role == 'admin' %}
+
+                        <span class="badge bg-danger">
+                            Admin
+                        </span>
+
+                        {% else %}
+
+                        <span class="badge bg-secondary">
+                            User
+                        </span>
+
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+                        {{ user.created_at }}
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
 
 </div>
 
-</body>
-</html>
+{% endblock %}

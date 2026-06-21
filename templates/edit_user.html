@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}
+Edit User
+{% endblock %}
+
+{% block content %}
+
+<h2>Edit User</h2>
+
+<form
+    action="/update-user/{{ user.id }}"
+    method="POST">
+
+<div class="mb-3">
+
+    <label>Username</label>
+
+    <input
+        type="text"
+        name="username"
+        class="form-control"
+        value="{{ user.username }}"
+        required>
+
+</div>
+
+<div class="mb-3">
+
+    <label>Email</label>
+
+    <input
+        type="email"
+        name="email"
+        class="form-control"
+        value="{{ user.email }}"
+        required>
+
+</div>
+
+<div class="mb-3">
+
+    <label>Role</label>
+
+    <select
+        name="role"
+        class="form-select">
+
+        <option
+            value="user"
+            {% if user.role == 'user' %}
+            selected
+            {% endif %}>
+            User
+        </option>
+
+        <option
+            value="admin"
+            {% if user.role == 'admin' %}
+            selected
+            {% endif %}>
+            Admin
+        </option>
+
+    </select>
+
+</div>
+
+<button
+    type="submit"
+    class="btn btn-primary">
+
+    Update User
+
+</button>
+
+</form>
+
+{% endblock %}
