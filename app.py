@@ -277,13 +277,151 @@ def profile():
     if "user_id" not in session:
         return redirect("/login")
 
-    return render_template(
-        "profile.html",
-        username=session["username"],
-        email=session["email"]
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE id=%s
+        """,
+        (session["user_id"],)
     )
 
- 
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "profile.html",
+        user=user
+    )
+
+
+# Profile Update
+
+@app.route("/update-profile", methods=["POST"])
+def update_profile():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    first_name = request.form.get("first_name")
+    last_name = request.form.get("last_name")
+    phone = request.form.get("phone")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET first_name=%s,
+            last_name=%s,
+            phone=%s
+        WHERE id=%s
+        """,
+        (
+            first_name,
+            last_name,
+            phone,
+            session["user_id"]
+        )
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    log_action(
+        session["username"],
+        "Updated Profile"
+    )
+
+    return redirect("/profile")
+
+
+# change password
+
+@app.route("/change-password")
+def change_password():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    return render_template(
+        "change_password.html"
+    )
+
+# Update Password
+
+@app.route("/update-password", methods=["POST"])
+def update_password():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    current_password = request.form.get(
+        "current_password"
+    )
+
+    new_password = request.form.get(
+        "new_password"
+    )
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE id=%s
+        """,
+        (session["user_id"],)
+    )
+
+    user = cursor.fetchone()
+
+    if not bcrypt.checkpw(
+        current_password.encode(),
+        user["password"].encode()
+    ):
+        return "Current password incorrect"
+
+    hashed_password = bcrypt.hashpw(
+        new_password.encode(),
+        bcrypt.gensalt()
+    ).decode()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET password=%s
+        WHERE id=%s
+        """,
+        (
+            hashed_password,
+            session["user_id"]
+        )
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    log_action(
+        session["username"],
+        "Changed Password"
+    )
+
+    return redirect("/profile")
+
+
 # Logout
  
 @app.route("/logout")
