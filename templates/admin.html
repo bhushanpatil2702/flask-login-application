@@ -30,6 +30,8 @@ User Management
                     <th>Role</th>
                     <th>Created</th>
                     <th>Action</th>
+                    <th>Locked</th>
+                    <th>Email Verified</th>
                 </tr>
 
             </thead>
@@ -85,6 +87,45 @@ User Management
                             class="btn btn-danger btn-sm">
                             Delete
                         </a>
+
+                    </td>
+                    <td>
+
+                        {% if user.account_locked %}
+
+                        <span class="badge bg-danger">
+                            Locked
+                        </span>
+
+                        <a href="/unlock-user/{{ user.id }}"
+                        class="btn btn-success btn-sm">
+                        Unlock
+                        </a>
+
+                        {% else %}
+
+                        <span class="badge bg-success">
+                            Active
+                        </span>
+
+                        {% endif %}
+
+                    </td>
+                    <td>
+
+                        {% if user.email_verified %}
+
+                        <span class="badge bg-success">
+                        Verified
+                        </span>
+
+                        {% else %}
+
+                        <span class="badge bg-warning">
+                        Pending
+                        </span>
+
+                        {% endif %}
 
                     </td>
 

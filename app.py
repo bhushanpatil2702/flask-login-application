@@ -2,7 +2,8 @@ from flask import Flask, render_template, request, jsonify, redirect, session
 import pymysql
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer
-
+import re
+from email_service import send_email
 
 app = Flask(__name__)
 
@@ -116,6 +117,11 @@ def reset_password(token):
     password = request.form.get(
         "password"
     )
+
+    is_valid, message = validate_password(password)
+
+    if not is_valid:
+        return message
 
     hashed_password = bcrypt.hashpw(
         password.encode(),
@@ -240,6 +246,8 @@ def admin():
             username,
             email,
             role,
+            account_locked,
+            email_verified,
             created_at
         FROM users
         ORDER BY id
@@ -583,6 +591,14 @@ def signup():
                 "status": "failed",
                 "message": "Email already exists"
             })
+        
+        is_valid, message = validate_password(password)
+
+        if not is_valid:
+            return jsonify({
+                "status": "failed",
+                "message": message
+            }), 400
 
         # Hash password
         hashed_password = bcrypt.hashpw(
@@ -607,6 +623,36 @@ def signup():
 
         cursor.close()
         conn.close()
+
+
+        verification_token = serializer.dumps(
+            email,
+            salt="email-verification"
+        )
+
+        verification_link = (
+            f"http://localhost:5000/verify-email/{verification_token}"
+        )
+
+        html_body = f"""
+        <h2>Welcome {username}</h2>
+
+        <p>
+        Please verify your email address.
+        </p>
+
+        <p>
+        <a href="{verification_link}">
+        Verify Email
+        </a>
+        </p>
+        """
+
+        send_email(
+            email,
+            "Verify Your Email",
+            html_body
+        )
         log_action(
             username,
             "New User Registered"
@@ -625,8 +671,74 @@ def signup():
             "message": str(e)
         }), 500
 
+# Unlock User
 
- 
+@app.route("/unlock-user/<int:user_id>")
+def unlock_user(user_id):
+
+    if session["role"] != "admin":
+        return redirect("/dashboard")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE users
+        SET
+            failed_attempts = 0,
+            account_locked = FALSE
+        WHERE id=%s
+    """, (user_id,))
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return redirect("/admin")
+
+
+# Email Verification
+
+@app.route("/verify-email/<token>")
+def verify_email(token):
+
+    try:
+
+        email = serializer.loads(
+            token,
+            salt="email-verification",
+            max_age=86400
+        )
+
+    except Exception:
+
+        return """
+        Verification link expired
+        """
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET email_verified=TRUE
+        WHERE email=%s
+        """,
+        (email,)
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return """
+    Email verified successfully.
+    You can now login.
+    """
+
 # Login API
  
 @app.route("/login", methods=["POST"])
@@ -651,17 +763,55 @@ def login():
 
         user = cursor.fetchone()
 
+        # User not found
         if not user:
+
+            cursor.close()
+            conn.close()
 
             return jsonify({
                 "status": "failed",
-                "message": "Invalid Email"
-            }), 401
+                "message": "User not found"
+            }), 404
 
+        # Email verification check
+        if not user["email_verified"]:
+
+            cursor.close()
+            conn.close()
+
+            return jsonify({
+                "status": "failed",
+                "message": "Please verify your email before login."
+            }), 403
+
+        # Account locked check
+        if user["account_locked"]:
+
+            cursor.close()
+            conn.close()
+
+            return jsonify({
+                "status": "failed",
+                "message": "Account Locked. Contact Administrator."
+            }), 403
+
+        # Password validation
         if bcrypt.checkpw(
             password.encode("utf-8"),
             user["password"].encode("utf-8")
         ):
+
+            # Reset failed attempts
+            cursor.execute(
+                """
+                UPDATE users
+                SET
+                    failed_attempts = 0
+                WHERE id=%s
+                """,
+                (user["id"],)
+            )
 
             session["user_id"] = user["id"]
             session["username"] = user["username"]
@@ -704,9 +854,46 @@ def login():
                 "message": "Login Successful"
             })
 
+        # Invalid password
+        cursor.execute(
+            """
+            UPDATE users
+            SET failed_attempts = failed_attempts + 1
+            WHERE id=%s
+            """,
+            (user["id"],)
+        )
+
+        cursor.execute(
+            """
+            SELECT failed_attempts
+            FROM users
+            WHERE id=%s
+            """,
+            (user["id"],)
+        )
+
+        attempts = cursor.fetchone()["failed_attempts"]
+
+        if attempts >= 5:
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET account_locked = TRUE
+                WHERE id=%s
+                """,
+                (user["id"],)
+            )
+
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
         return jsonify({
             "status": "failed",
-            "message": "Invalid Password"
+            "message": f"Invalid Password. Attempts: {attempts}/5"
         }), 401
 
     except Exception as e:
@@ -715,8 +902,6 @@ def login():
             "status": "error",
             "message": str(e)
         }), 500
-
-
  
 # Health Check
  
@@ -829,6 +1014,28 @@ def login_history():
         "login_history.html",
         logs=logs
     )
+
+
+# Password Validation
+
+def validate_password(password):
+
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters"
+
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain an uppercase letter"
+
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain a lowercase letter"
+
+    if not re.search(r"\d", password):
+        return False, "Password must contain a number"
+
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return False, "Password must contain a special character"
+
+    return True, "Valid Password"
 
 # Run App
  
